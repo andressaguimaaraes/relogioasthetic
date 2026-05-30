@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pomodoro</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    overflow: hidden;
+  }
+
+  .pomodoro {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .pomo-label {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: #888;
+  }
+  .pomo-label.foco  { color: #d6d6d6; }
+  .pomo-label.pausa { color: #7ec8a4; }
+
+  .pomo-clock {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .pomo-box {
+    background: #1c1c1c;
+    border-radius: 22px;
+    width: 150px;
+    height: 190px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+    transition: box-shadow 0.2s;
+  }
+
+  .pomo-box.active       { box-shadow: 0 0 0 2px #d6d6d6; }
+  .pomo-box.pausa-active { box-shadow: 0 0 0 2px #7ec8a4; }
+
+  .pomo-digits {
+    font-weight: 700;
+    font-size: 118px;
+    line-height: 0.92;
+    color: #d6d6d6;
+    letter-spacing: -4px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .pomo-sep {
+    font-size: 90px;
+    font-weight: 700;
+    color: #444;
+    line-height: 1;
+    margin-bottom: 8px;
+  }
+
+  .pomo-controls {
+    display: flex;
+    gap: 10px;
+  }
+
+  .btn {
+    background: #1c1c1c;
+    border: none;
+    border-radius: 50px;
+    color: #d6d6d6;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 10px 22px;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+  }
+  .btn:hover  { background: #2e2e2e; }
+  .btn:active { transform: scale(0.97); }
+
+  .btn-start            { background: #d6d6d6; color: #111; }
+  .btn-start:hover      { background: #eaeaea; }
+  .btn-start.pausa-mode { background: #7ec8a4; color: #111; }
+  .btn-start.pausa-mode:hover { background: #96d6b5; }
+
+  .dots {
+    display: flex;
+    gap: 6px;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: #333; }
+  .dot.done       { background: #d6d6d6; }
+  .dot.done.pausa { background: #7ec8a4; }
+</style>
+</head>
+<body>
+<div class="pomodoro">
+  <div class="pomo-label foco" id="pomo-label">FOCO</div>
+
+  <div class="pomo-clock">
+    <div class="pomo-box active" id="pomo-min-box">
+      <span class="pomo-digits" id="pomo-min">25</span>
+    </div>
+    <div class="pomo-sep">:</div>
+    <div class="pomo-box active" id="pomo-sec-box">
+      <span class="pomo-digits" id="pomo-sec">00</span>
+    </div>
+  </div>
+
+  <div class="pomo-controls">
+    <button class="btn btn-start" id="btn-start" onclick="toggleTimer()">INICIAR</button>
+    <button class="btn" onclick="resetTimer()">RESET</button>
+  </div>
+
+  <div class="dots" id="dots">
+    <div class="dot"></div>
+    <div class="dot"></div>
+    <div class="dot"></div>
+    <div class="dot"></div>
+  </div>
+</div>
+
+<script>
+  const FOCO  = 25 * 60;
+  const PAUSA = 5  * 60;
+
+  let remaining  = FOCO;
+  let running    = false;
+  let isFoco     = true;
+  let interval   = null;
+  let roundsDone = 0;
+
+  function pad(n) { return n < 10 ? "0" + n : "" + n; }
+
+  function updateDisplay() {
+    const m = Math.floor(remaining / 60);
+    const s = remaining % 60;
+    document.getElementById("pomo-min").textContent = pad(m);
+    document.getElementById("pomo-sec").textContent = pad(s);
+
+    const label    = document.getElementById("pomo-label");
+    const btnStart = document.getElementById("btn-start");
+    const minBox   = document.getElementById("pomo-min-box");
+    const secBox   = document.getElementById("pomo-sec-box");
+
+    const activeClass = isFoco ? "pomo-box active" : "pomo-box pausa-active";
+    minBox.className = running ? activeClass : "pomo-box";
+    secBox.className = running ? activeClass : "pomo-box";
+
+    if (isFoco) {
+      label.className      = "pomo-label foco";
+      label.textContent    = "FOCO";
+      btnStart.className   = "btn btn-start";
+    } else {
+      label.className      = "pomo-label pausa";
+      label.textContent    = "PAUSA";
+      btnStart.className   = "btn btn-start pausa-mode";
+    }
+    btnStart.textContent = running ? "PAUSAR" : "INICIAR";
+
+    const dots = document.querySelectorAll(".dot");
+    dots.forEach((d, i) => {
+      d.className = i < (roundsDone % 4)
+        ? (isFoco ? "dot done" : "dot done pausa")
+        : "dot";
+    });
+  }
+
+  function toggleTimer() {
+    if (running) {
+      clearInterval(interval);
+      running = false;
+      updateDisplay();
+      return;
+    }
+    running = true;
+    interval = setInterval(function tick() {
+      remaining--;
+      if (remaining <= 0) {
+        clearInterval(interval);
+        running = false;
+        if (isFoco) roundsDone++;
+        isFoco    = !isFoco;
+        remaining = isFoco ? FOCO : PAUSA;
+        notify();
+        running  = true;
+        interval = setInterval(tick, 1000);
+      }
+      updateDisplay();
+    }, 1000);
+    updateDisplay();
+  }
+
+  function resetTimer() {
+    clearInterval(interval);
+    running   = false;
+    isFoco    = true;
+    remaining = FOCO;
+    updateDisplay();
+  }
+
+  function notify() {
+    const msg = isFoco ? "Hora de focar! 25 minutos." : "Pausa de 5 minutos. Respira!";
+    if (Notification.permission === "granted") {
+      new Notification("Pomodoro", { body: msg });
+    } else if (Notification.permission !== "denied") {
+      Notification.requestPermission().then(p => {
+        if (p === "granted") new Notification("Pomodoro", { body: msg });
+      });
+    }
+  }
+
+  updateDisplay();
+</script>
+</body>
+</html>
